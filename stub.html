@@ -1,0 +1,1193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sinc Function Animation</title>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0f172a;
+            color: #f8fafc;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                         Roboto, Helvetica, Arial, sans-serif;
+
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            width: 75vw;
+            height: 75vh;
+        }
+
+        .animation-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 12px;
+            justify-content: center;
+        }
+
+        .animation-controls button {
+            padding: 8px 18px;
+            border: 1px solid #475569;
+            border-radius: 6px;
+            background: #1e293b;
+            color: #f8fafc;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .animation-controls button:hover {
+            background: #334155;
+        }
+
+        canvas {
+            background-color: #1e293b;
+            border-radius: 8px;
+
+            box-shadow:
+                0 10px 25px -5px rgba(0, 0, 0, 0.3),
+                0 8px 10px -6px rgba(0, 0, 0, 0.3);
+
+            display: block;
+
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+    <canvas id="plotCanvas" width="1200" height="700"></canvas>
+
+    <div class="animation-controls">
+        <button id="playPauseButton"
+                type="button"
+                aria-label="Pause"
+                title="Pause">⏸</button>
+
+        <button id="stopButton"
+                type="button"
+                aria-label="Stop"
+                title="Stop">⏹</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('plotCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Plot parameters
+    const xMin = -25;
+    const xMax = 25;
+    const yMin = -0.5;
+    const yMax = 1.5;
+
+    // Animation state
+    let currentX = xMin;
+    let speed = 0.05;
+    let points = [];
+    let animationId = null;
+    let isPaused = false;
+
+    // Hover state
+    let hoverX = null;
+    let hoverY = null;
+
+    // Visibility controls
+    let showFunction = true;
+    let showDerivative = true;
+    let showTangent = true;
+
+    // Colors
+    const graphColor = '#38bdf8';
+    const tangentColor = '#fbbf24';
+    const pointColor = '#f43f5e';
+
+    // Convert mathematical coordinates to canvas coordinates
+    function toPixelX(x) {
+        return ((x - xMin) / (xMax - xMin)) * canvas.width;
+    }
+
+    function toPixelY(y) {
+        return canvas.height -
+            ((y - yMin) / (yMax - yMin)) * canvas.height;
+    }
+
+    // Convert canvas coordinates to mathematical coordinates
+    function toGraphX(pixelX) {
+        return xMin +
+            (pixelX / canvas.width) * (xMax - xMin);
+    }
+
+    // sinc function: sin(x) / x
+    function sinc(x) {
+        if (Math.abs(x) < 0.0001) return null;
+        return Math.sin(x) / x;
+    }
+
+    // Derivative:
+    // f'(x) = (x*cos(x) - sin(x)) / x^2
+    function sincDerivative(x) {
+        if (Math.abs(x) < 0.0001) return null;
+
+        return (x * Math.cos(x) - Math.sin(x)) / (x * x);
+    }
+
+    // Draw grid
+    function drawGrid() {
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = 1;
+        ctx.font = '12px sans-serif';
+        ctx.fillStyle = '#64748b';
+
+        // Vertical grid lines
+        for (
+            let x = Math.ceil(xMin);
+            x <= Math.floor(xMax);
+            x += 5
+        ) {
+            if (x === 0) continue;
+
+            const px = toPixelX(x);
+
+            ctx.beginPath();
+            ctx.moveTo(px, 0);
+            ctx.lineTo(px, canvas.height);
+            ctx.stroke();
+
+            ctx.fillText(
+                x,
+                px - 6,
+                toPixelY(0) + 18
+            );
+        }
+
+        // Horizontal grid lines
+        for (let y = -0.5; y <= 1.5; y += 0.5) {
+            if (y === 0) continue;
+
+            const py = toPixelY(y);
+
+            ctx.beginPath();
+            ctx.moveTo(0, py);
+            ctx.lineTo(canvas.width, py);
+            ctx.stroke();
+
+            ctx.fillText(
+                y.toFixed(1),
+                toPixelX(0) + 8,
+                py + 4
+            );
+        }
+
+        // X axis
+        ctx.strokeStyle = '#475569';
+        ctx.lineWidth = 2;
+
+        ctx.beginPath();
+        ctx.moveTo(0, toPixelY(0));
+        ctx.lineTo(canvas.width, toPixelY(0));
+        ctx.stroke();
+
+        ctx.fillText(
+            '0',
+            toPixelX(0) - 12,
+            toPixelY(0) + 14
+        );
+
+        // Y axis
+        ctx.beginPath();
+        ctx.moveTo(toPixelX(0), 0);
+        ctx.lineTo(toPixelX(0), canvas.height);
+        ctx.stroke();
+    }
+
+    // Hollow point at (0,1)
+    function drawHollowPoint() {
+        const px = toPixelX(0);
+        const py = toPixelY(1);
+
+        ctx.save();
+
+        ctx.strokeStyle = graphColor;
+        ctx.lineWidth = 3;
+        ctx.fillStyle = '#1e293b';
+
+        ctx.beginPath();
+        ctx.arc(px, py, 6, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.restore();
+    }
+
+    // Draw the derivative progressively
+    function drawDerivative() {
+        ctx.save();
+
+        ctx.strokeStyle = tangentColor;
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        let isDrawing = false;
+        const step = speed;
+
+        // Keep the derivative aligned with the last function point
+        // that has actually been drawn.
+        const endX = points.length > 0
+            ? Math.min(points[points.length - 1].x, xMax)
+            : xMin;
+
+        for (let x = xMin; x <= endX; x += step) {
+            const y = sincDerivative(x);
+
+            if (y === null || !Number.isFinite(y)) {
+                if (isDrawing) {
+                    ctx.stroke();
+                    isDrawing = false;
+                }
+                continue;
+            }
+
+            if (y < yMin || y > yMax) {
+                if (isDrawing) {
+                    ctx.stroke();
+                    isDrawing = false;
+                }
+                continue;
+            }
+
+            if (!isDrawing) {
+                ctx.beginPath();
+
+                ctx.moveTo(
+                    toPixelX(x),
+                    toPixelY(y)
+                );
+
+                isDrawing = true;
+            } else {
+                ctx.lineTo(
+                    toPixelX(x),
+                    toPixelY(y)
+                );
+            }
+        }
+
+        if (isDrawing) {
+            ctx.stroke();
+        }
+
+        ctx.restore();
+    }
+
+    // Draw tangent line at current point
+    // Tangent is exactly 200 pixels long.
+    function drawTangent(x0, y0) {
+        const slope = sincDerivative(x0);
+
+        if (slope === null || y0 === null) return;
+
+        const centerX = toPixelX(x0);
+        const centerY = toPixelY(y0);
+
+        const halfLength = 100;
+
+        // Convert mathematical slope into pixel-space slope
+        const pixelSlope =
+            -slope *
+            (canvas.height / (yMax - yMin)) /
+            (canvas.width / (xMax - xMin));
+
+        // Normalize direction vector
+        const length = Math.sqrt(1 + pixelSlope * pixelSlope);
+
+        const dx = 1 / length;
+        const dy = pixelSlope / length;
+
+        const xLeft = centerX - dx * halfLength;
+        const yLeft = centerY - dy * halfLength;
+
+        const xRight = centerX + dx * halfLength;
+        const yRight = centerY + dy * halfLength;
+
+        ctx.save();
+
+        ctx.strokeStyle = pointColor;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([]);
+
+        ctx.beginPath();
+        ctx.moveTo(xLeft, yLeft);
+        ctx.lineTo(xRight, yRight);
+        ctx.stroke();
+
+        ctx.restore();
+    }
+
+    // Hollow point at (0, 0) for the derivative
+    function drawDerivativeHollowPoint() {
+        if (currentX < 0) return;
+
+        const px = toPixelX(0);
+        const py = toPixelY(0);
+
+        ctx.save();
+
+        ctx.strokeStyle = tangentColor;
+        ctx.lineWidth = 3;
+        ctx.fillStyle = '#1e293b';
+
+        ctx.beginPath();
+        ctx.arc(px, py, 6, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.restore();
+    }
+
+    // Draw the point where the tangent touches the function
+    function drawTangentPoint(x0, y0) {
+        if (x0 === null || y0 === null) return;
+
+        ctx.save();
+
+        ctx.fillStyle = pointColor;
+
+        ctx.beginPath();
+
+        ctx.arc(
+            toPixelX(x0),
+            toPixelY(y0),
+            5,
+            0,
+            2 * Math.PI
+        );
+
+        ctx.fill();
+
+        ctx.restore();
+    }
+
+    // Display current function value and slope
+    function drawCurrentValues(x0, y0) {
+        const valueText =
+            y0 === null
+                ? 'undefined'
+                : y0.toFixed(6);
+
+        const slope = sincDerivative(x0);
+
+        const slopeText =
+            slope === null
+                ? 'undefined'
+                : slope.toFixed(6);
+
+        ctx.save();
+
+        ctx.font = 'italic 24px serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+
+        // f(x)
+        ctx.fillStyle = graphColor;
+
+        ctx.fillText(
+            `f(x) = ${valueText}`,
+            15,
+            15
+        );
+
+        // f'(x)
+        ctx.fillStyle = tangentColor;
+
+        ctx.fillText(
+            `f'(x) = ${slopeText}`,
+            15,
+            40
+        );
+
+        // Checkboxes
+        ctx.font = '16px sans-serif';
+        ctx.fillStyle = '#f8fafc';
+
+        const checkboxY = 75;
+        const boxSize = 15;
+
+        // f(x)
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 1;
+
+        ctx.strokeRect(
+            15,
+            checkboxY,
+            boxSize,
+            boxSize
+        );
+
+        if (showFunction) {
+            ctx.fillStyle = graphColor;
+
+            ctx.fillRect(
+                15,
+                checkboxY,
+                boxSize,
+                boxSize
+            );
+
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+
+            ctx.beginPath();
+            ctx.moveTo(18, checkboxY + 8);
+            ctx.lineTo(22, checkboxY + 12);
+            ctx.lineTo(28, checkboxY + 4);
+            ctx.stroke();
+        }
+
+        ctx.fillStyle = '#f8fafc';
+
+        ctx.fillText(
+            'f(x)',
+            38,
+            checkboxY + 13
+        );
+
+        // f'(x)
+        const secondX = 90;
+
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 1;
+
+        ctx.strokeRect(
+            secondX,
+            checkboxY,
+            boxSize,
+            boxSize
+        );
+
+        if (showDerivative) {
+            ctx.fillStyle = tangentColor;
+
+            ctx.fillRect(
+                secondX,
+                checkboxY,
+                boxSize,
+                boxSize
+            );
+
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+
+            ctx.beginPath();
+            ctx.moveTo(
+                secondX + 3,
+                checkboxY + 8
+            );
+            ctx.lineTo(
+                secondX + 7,
+                checkboxY + 12
+            );
+            ctx.lineTo(
+                secondX + 13,
+                checkboxY + 4
+            );
+            ctx.stroke();
+        }
+
+        ctx.fillStyle = '#f8fafc';
+
+        ctx.fillText(
+            "f'(x)",
+            secondX + 23,
+            checkboxY + 13
+        );
+
+        // Tangent
+        const thirdX = 175;
+
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 1;
+
+        ctx.strokeRect(
+            thirdX,
+            checkboxY,
+            boxSize,
+            boxSize
+        );
+
+        if (showTangent) {
+            ctx.fillStyle = pointColor;
+
+            ctx.fillRect(
+                thirdX,
+                checkboxY,
+                boxSize,
+                boxSize
+            );
+
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+
+            ctx.beginPath();
+            ctx.moveTo(
+                thirdX + 3,
+                checkboxY + 8
+            );
+            ctx.lineTo(
+                thirdX + 7,
+                checkboxY + 12
+            );
+            ctx.lineTo(
+                thirdX + 13,
+                checkboxY + 4
+            );
+            ctx.stroke();
+        }
+
+        ctx.fillStyle = '#f8fafc';
+
+        ctx.fillText(
+            'tangent',
+            thirdX + 23,
+            checkboxY + 13
+        );
+
+        // Animation speed slider below the toggles.
+        const sliderX = 15;
+        const sliderY = 112;
+        const sliderWidth = 190;
+        const sliderMin = 0.01;
+        const sliderMax = 0.15;
+        const sliderPosition = (speed - sliderMin) / (sliderMax - sliderMin);
+
+        ctx.font = '14px sans-serif';
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillText('Speed', sliderX, sliderY + 8);
+        ctx.fillStyle = '#64748b';
+        ctx.fillText(speed.toFixed(2), sliderX + sliderWidth + 12, sliderY + 8);
+
+        ctx.strokeStyle = '#64748b';
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(sliderX, sliderY + 25);
+        ctx.lineTo(sliderX + sliderWidth, sliderY + 25);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#38bdf8';
+        ctx.beginPath();
+        ctx.moveTo(sliderX, sliderY + 25);
+        ctx.lineTo(sliderX + sliderWidth * sliderPosition, sliderY + 25);
+        ctx.stroke();
+
+        ctx.fillStyle = '#f8fafc';
+        ctx.beginPath();
+        ctx.arc(sliderX + sliderWidth * sliderPosition, sliderY + 25, 7, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+    }
+
+    // Draw hover coordinates for already-drawn points
+    function drawHoverCoordinates() {
+        if (hoverX === null || hoverY === null) return;
+
+        const canvasX = hoverX;
+        const canvasY = hoverY;
+
+        let nearestPoint = null;
+        let nearestDistance = Infinity;
+        let nearestColor = graphColor;
+
+        // Function points that have already been drawn
+        if (showFunction && points.length > 0) {
+            for (const point of points) {
+                if (point.y === null) continue;
+
+                const px = toPixelX(point.x);
+                const py = toPixelY(point.y);
+
+                const distance = Math.hypot(
+                    canvasX - px,
+                    canvasY - py
+                );
+
+                if (distance < nearestDistance) {
+                    nearestDistance = distance;
+                    nearestPoint = point;
+                    nearestColor = graphColor;
+                }
+            }
+        }
+
+        // Derivative points that have already been drawn
+        if (showDerivative) {
+            const step = 0.02;
+            // Hover only over derivative points up to the last drawn
+            // function point, matching the visible derivative graph.
+            const endX = points.length > 0
+                ? Math.min(points[points.length - 1].x, xMax)
+                : xMin;
+
+            if (endX >= xMin) {
+                let x =
+                    xMin +
+                    Math.round(
+                        (toGraphX(canvasX) - xMin) / step
+                    ) * step;
+
+                x = Math.max(
+                    xMin,
+                    Math.min(endX, x)
+                );
+
+                for (let i = -2; i <= 2; i++) {
+                    const sampleX = x + i * step;
+
+                    if (
+                        sampleX < xMin ||
+                        sampleX > endX
+                    ) {
+                        continue;
+                    }
+
+                    const y = sincDerivative(sampleX);
+
+                    if (
+                        y === null ||
+                        !Number.isFinite(y)
+                    ) {
+                        continue;
+                    }
+
+                    if (
+                        y < yMin ||
+                        y > yMax
+                    ) {
+                        continue;
+                    }
+
+                    const px = toPixelX(sampleX);
+                    const py = toPixelY(y);
+
+                    const distance = Math.hypot(
+                        canvasX - px,
+                        canvasY - py
+                    );
+
+                    if (distance < nearestDistance) {
+                        nearestDistance = distance;
+
+                        nearestPoint = {
+                            x: sampleX,
+                            y: y
+                        };
+
+                        nearestColor = tangentColor;
+                    }
+                }
+            }
+        }
+
+        // Show coordinates only when the cursor
+        // is close to an already-drawn point.
+        if (
+            nearestPoint === null ||
+            nearestDistance > 15
+        ) {
+            return;
+        }
+
+        const pointCanvasX =
+            toPixelX(nearestPoint.x);
+
+        const pointCanvasY =
+            toPixelY(nearestPoint.y);
+
+        ctx.save();
+
+        // Highlight using the same color as the
+        // graph being hovered.
+        ctx.beginPath();
+
+        ctx.arc(
+            pointCanvasX,
+            pointCanvasY,
+            5,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fillStyle = nearestColor;
+        ctx.fill();
+
+        const label =
+            `(${nearestPoint.x.toFixed(6)};${nearestPoint.y.toFixed(6)})`;
+
+        ctx.font = 'italic 16px serif';
+
+        const textWidth =
+            ctx.measureText(label).width;
+
+        let labelX =
+            pointCanvasX + 10;
+
+        let labelY =
+            pointCanvasY - 10;
+
+        if (
+            labelX +
+            textWidth +
+            5 >
+            canvas.width
+        ) {
+            labelX =
+                pointCanvasX -
+                textWidth -
+                10;
+        }
+
+        if (labelY - 16 < 0) {
+            labelY =
+                pointCanvasY + 20;
+        }
+
+        ctx.fillStyle = '#ffffff';
+
+        ctx.fillText(
+            label,
+            labelX,
+            labelY
+        );
+
+        ctx.restore();
+    }
+
+    // Redraw current frame without advancing animation
+    function redrawCurrentFrame() {
+        ctx.clearRect(
+            0,
+            0,
+            canvas.width,
+            canvas.height
+        );
+
+        drawGrid();
+        drawSincFunction();
+
+        if (showDerivative) {
+            drawDerivative();
+            drawDerivativeHollowPoint();
+        }
+
+        if (points.length > 0) {
+            const currentPoint =
+                points[points.length - 1];
+
+            drawCurrentValues(
+                currentPoint.x,
+                currentPoint.y
+            );
+
+            if (
+                showFunction &&
+                showTangent &&
+                currentPoint.y !== null
+            ) {
+                drawTangentPoint(
+                    currentPoint.x,
+                    currentPoint.y
+                );
+            }
+
+            if (
+                showTangent &&
+                currentPoint.y !== null
+            ) {
+                drawTangent(
+                    currentPoint.x,
+                    currentPoint.y
+                );
+            }
+        }
+
+        if (
+            currentX > 0 &&
+            showFunction
+        ) {
+            drawHollowPoint();
+        }
+
+        drawHoverCoordinates();
+    }
+
+    // Speed slider interaction.
+    function updateSpeedFromPointer(event) {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = (event.clientX - rect.left) * (canvas.width / rect.width);
+        const mouseY = (event.clientY - rect.top) * (canvas.height / rect.height);
+        const sliderX = 15;
+        const sliderY = 112;
+        const sliderWidth = 190;
+
+        if (mouseY < sliderY + 12 || mouseY > sliderY + 38) return false;
+
+        const position = Math.max(0, Math.min(1, (mouseX - sliderX) / sliderWidth));
+        speed = 0.01 + position * (0.15 - 0.01);
+        redrawCurrentFrame();
+        return true;
+    }
+
+    let draggingSpeedSlider = false;
+
+    canvas.addEventListener('pointerdown', function(event) {
+        if (updateSpeedFromPointer(event)) {
+            draggingSpeedSlider = true;
+            canvas.setPointerCapture(event.pointerId);
+        }
+    });
+
+    canvas.addEventListener('pointermove', function(event) {
+        if (draggingSpeedSlider) updateSpeedFromPointer(event);
+    });
+
+    canvas.addEventListener('pointerup', function() {
+        draggingSpeedSlider = false;
+    });
+
+    canvas.addEventListener('pointercancel', function() {
+        draggingSpeedSlider = false;
+    });
+
+    // Handle checkbox clicks
+    canvas.addEventListener(
+        'click',
+        function(event) {
+            const rect =
+                canvas.getBoundingClientRect();
+
+            const scaleX =
+                canvas.width / rect.width;
+
+            const scaleY =
+                canvas.height / rect.height;
+
+            const mouseX =
+                (event.clientX - rect.left) *
+                scaleX;
+
+            const mouseY =
+                (event.clientY - rect.top) *
+                scaleY;
+
+            const checkboxY = 75;
+            const boxSize = 15;
+
+            if (mouseY >= 124 && mouseY <= 150) return;
+
+            if (
+                mouseY >= checkboxY &&
+                mouseY <= checkboxY + boxSize
+            ) {
+                if (
+                    mouseX >= 15 &&
+                    mouseX <= 15 + boxSize
+                ) {
+                    showFunction =
+                        !showFunction;
+                }
+
+                else if (
+                    mouseX >= 90 &&
+                    mouseX <= 90 + boxSize
+                ) {
+                    showDerivative =
+                        !showDerivative;
+                }
+
+                else if (
+                    mouseX >= 175 &&
+                    mouseX <= 175 + boxSize
+                ) {
+                    showTangent =
+                        !showTangent;
+                }
+
+                redrawCurrentFrame();
+            }
+        }
+    );
+
+    // Draw sinc function
+    function drawSincFunction() {
+        if (
+            !showFunction ||
+            points.length <= 1
+        ) {
+            return;
+        }
+
+        ctx.strokeStyle = graphColor;
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        let isDrawing = false;
+
+        for (
+            let i = 0;
+            i < points.length;
+            i++
+        ) {
+            if (points[i].y === null) {
+                if (isDrawing) {
+                    ctx.stroke();
+                }
+
+                isDrawing = false;
+                continue;
+            }
+
+            if (!isDrawing) {
+                ctx.beginPath();
+
+                ctx.moveTo(
+                    toPixelX(points[i].x),
+                    toPixelY(points[i].y)
+                );
+
+                isDrawing = true;
+            }
+
+            else {
+                ctx.lineTo(
+                    toPixelX(points[i].x),
+                    toPixelY(points[i].y)
+                );
+            }
+        }
+
+        if (isDrawing) {
+            ctx.stroke();
+        }
+    }
+
+    // Animation
+    function animate() {
+        if (isPaused) {
+            animationId = null;
+            return;
+        }
+
+        ctx.clearRect(
+            0,
+            0,
+            canvas.width,
+            canvas.height
+        );
+
+        drawGrid();
+
+        if (currentX <= xMax) {
+            const y = sinc(currentX);
+
+            points.push({
+                x: currentX,
+                y: y
+            });
+
+            currentX += speed;
+        }
+
+        drawSincFunction();
+
+        if (showDerivative) {
+            drawDerivative();
+            drawDerivativeHollowPoint();
+        }
+
+		
+
+        if (points.length > 0) {
+            const currentPoint =
+                points[points.length - 1];
+
+            drawCurrentValues(
+                currentPoint.x,
+                currentPoint.y
+            );
+
+            // Show contact point only when BOTH
+            // function and tangent are visible
+            if (
+                showFunction &&
+                showTangent &&
+                currentPoint.y !== null
+            ) {
+                drawTangentPoint(
+                    currentPoint.x,
+                    currentPoint.y
+                );
+            }
+
+            // Draw tangent only when enabled
+            if (
+                showTangent &&
+                currentPoint.y !== null
+            ) {
+                drawTangent(
+                    currentPoint.x,
+                    currentPoint.y
+                );
+            }
+        }
+
+        if (
+            currentX > 0 &&
+            showFunction
+        ) {
+            drawHollowPoint();
+        }
+
+        // Draw hover coordinate label
+        drawHoverCoordinates();
+
+        if (currentX > xMax) {
+            currentX = xMin;
+            points = [];
+        }
+
+        animationId =
+            requestAnimationFrame(animate);
+    }
+
+    function startAnimation() {
+        if (animationId !== null) {
+            cancelAnimationFrame(animationId);
+        }
+
+        currentX = xMin;
+        points = [];
+        isPaused = false;
+
+        playPauseButton.textContent = '⏸';
+
+        playPauseButton.setAttribute(
+            'aria-label',
+            'Pause'
+        );
+
+        playPauseButton.setAttribute(
+            'title',
+            'Pause'
+        );
+
+        animate();
+    }
+
+    const playPauseButton =
+        document.getElementById(
+            'playPauseButton'
+        );
+
+    const stopButton =
+        document.getElementById(
+            'stopButton'
+        );
+
+    // Play / Pause
+    playPauseButton.addEventListener(
+        'click',
+        function() {
+            if (isPaused) {
+                isPaused = false;
+
+                playPauseButton.textContent = '⏸';
+
+                playPauseButton.setAttribute(
+                    'aria-label',
+                    'Pause'
+                );
+
+                playPauseButton.setAttribute(
+                    'title',
+                    'Pause'
+                );
+
+                animate();
+            }
+
+            else {
+                isPaused = true;
+
+                playPauseButton.textContent = '▶';
+
+                playPauseButton.setAttribute(
+                    'aria-label',
+                    'Play'
+                );
+
+                playPauseButton.setAttribute(
+                    'title',
+                    'Play'
+                );
+            }
+        }
+    );
+
+    // Stop / restart
+    stopButton.addEventListener(
+        'click',
+        function() {
+            startAnimation();
+        }
+    );
+
+    // Mouse hover
+    canvas.addEventListener(
+        'mousemove',
+        function(event) {
+            const rect =
+                canvas.getBoundingClientRect();
+
+            hoverX =
+                (event.clientX - rect.left) *
+                (canvas.width / rect.width);
+
+            hoverY =
+                (event.clientY - rect.top) *
+                (canvas.height / rect.height);
+
+            redrawCurrentFrame();
+        }
+    );
+
+    // Remove coordinate label when mouse leaves canvas
+    canvas.addEventListener(
+        'mouseleave',
+        function() {
+            hoverX = null;
+            hoverY = null;
+
+            redrawCurrentFrame();
+        }
+    );
+
+    startAnimation();
+</script>
+
+</body>
+</html>
