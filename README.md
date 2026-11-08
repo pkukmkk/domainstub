@@ -1,1 +1,1 @@
-A stub page for [my domain](https://pkukmkk.ru/).
+A stub page for [my domain](https://pkukmkk.ru/)
